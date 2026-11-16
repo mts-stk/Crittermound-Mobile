@@ -656,6 +656,15 @@
                             <b>Battle Speed:</b> <span data-bind="text: battleTurnLength() / 20"></span> seconds<br />
                             <input style="width: 100%" type="range" min="2" max="60" data-bind="value: battleTurnLength">
                             <br /><br />
+                            <b>Eggs pushed out of a full hatchery:</b><br />
+                            <select data-bind="value: overflowAction">
+                                <option value="worker">become workers (if better than the weakest)</option>
+                                <option value="army">join the soldiers</option>
+                                <option value="discard">are discarded (original game)</option>
+                            </select>
+                            <br /><br />
+                            <b>Progress while away:</b> the game catches up on up to 12 hours when you return (breeding and production; wars only progress while open).
+                            <br /><br />
                             <h4>Release Notes</h4>
                             <p>
                                 <strong>1.1.4 - Sep 9th, 2014</strong><br />

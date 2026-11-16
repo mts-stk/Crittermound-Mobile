@@ -23,6 +23,11 @@ function LevelFromXp(n)
 	var t=Math.floor((Math.sqrt(4+8*n)-2)/4);
 	return t>99?99:t
 }
+function FormatDuration(n)
+	{
+	var t=Math.round(n/6e4),i=Math.floor(t/60),r=t%60;
+	return i>0?i+"h "+r+"m":t>0?t+" minutes":Math.round(n/1e3)+" seconds"
+}
 function SmartRound(n)
 	{
 	return n<100?Math.round(n*10)/10:Math.round(n)
@@ -327,6 +332,13 @@ var ticksPerSecond=20,game,GameController=function()
 		this.treasureTitle=ko.observable("");
 		this.treasureText=ko.observable("");
 		this.battleTurnLength=ko.observable(ticksPerSecond/2);
+		this.overflowAction=ko.observable("worker");
+		this.overflowStats={worker:0,army:0};
+		this.overflowEggs=[];
+		this.overflowPlacedWorker=!1;
+		this.mutationsFound=0;
+		this.lastTickTime=Date.now();
+		this.catchingUp=!1;
 		this.battleTurnClock=0;
 		this.inBattle=ko.observable(!1);
 		this.battleDamage=ko.observable(0);
@@ -725,10 +737,90 @@ var ticksPerSecond=20,game,GameController=function()
 			),f.length==0)
 				{
 				var o=n.traits[t.trait].base,s=n.traits[t.trait].bonus,h=n.traits[t.trait].genes.length+1;
-				o>25&&MutationCheck(h,s)&&(u=new Gene(t.id,t.trait,1,t.name,t.value,t.good),u.mutation=!0,n.traits[t.trait].genes.push(u),n.traits[t.trait].mutation=!0,n.CalculateScore(),r=!0)
+				o>25&&MutationCheck(h,s)&&(u=new Gene(t.id,t.trait,1,t.name,t.value,t.good),u.mutation=!0,n.traits[t.trait].genes.push(u),n.traits[t.trait].mutation=!0,n.CalculateScore(),r=!0,this.mutationsFound++)
 			}
 		}
 		else this.missNewGene(this.missNewGene()+1)
+	}
+	,n.prototype.PlaceWorker=function(u)
+		{
+		var w=this.mineMound().length+this.farmMound().length+this.carrierMound().length+this.factoryMound().length;
+		var h=u.dirtPerSecond>this.lowestMiner()||this.mineMound().length<this.maxMineMoundSize(),c=u.grassPerSecond>this.lowestFarmer()||this.farmMound().length<this.maxFarmMoundSize(),v=u.carryPerSecond>this.lowestCarrier()||this.carrierMound().length<this.maxCarrierMoundSize(),y=u.sodPerSecond>this.lowestFactory()||this.factoryMound().length<this.maxFactoryMoundSize(),s=Math.min(this.dirtPerSecondRaw(),this.grassPerSecondRaw(),this.carryPerSecondRaw(),this.sodPerSecondRaw());
+		h&&s==this.dirtPerSecondRaw()?this.mineMound.unshift(u):c&&s==this.grassPerSecondRaw()?this.farmMound.unshift(u):v&&s==this.carryPerSecondRaw()?this.carrierMound.unshift(u):y&&s==this.sodPerSecondRaw()?this.factoryMound.unshift(u):h&&c?(p=Math.min(this.dirtPerSecondRaw(),this.grassPerSecondRaw()),p==this.dirtPerSecondRaw()?this.mineMound.unshift(u):this.farmMound.unshift(u)):h?this.mineMound.unshift(u):c?this.farmMound.unshift(u):v?this.carrierMound.unshift(u):y&&this.factoryMound.unshift(u);
+		return this.mineMound().length+this.farmMound().length+this.carrierMound().length+this.factoryMound().length>w
+	}
+	,n.prototype.RouteOverflow=function()
+		{
+		var eggs=this.overflowEggs,i,u,a;
+		if(eggs.length==0)return;
+		this.overflowEggs=[];
+		a=this.overflowAction();
+		for(i=0;i<eggs.length;i++)
+			{
+			u=eggs[i];
+			u.isSelected(!1);
+			u.isLocked(!1);
+			a=="worker"?(u.job=2,this.PlaceWorker(u)&&(this.overflowPlacedWorker=!0,this.overflowStats.worker++)):a=="army"&&(u.job=3,this.armyMound.unshift(u),this.overflowStats.army++)
+		}
+	}
+	,n.prototype.CatchUp=function(ms)
+		{
+		var self=this,k=10,stepMs=k*1e3/20,cap=12*3600*1e3,real=Math.min(ms,cap),steps=Math.floor(real/stepMs),done=0,chunk=1500,
+		startId=this.achievementCounts[6].value,start={sod:this.sodRaw(),gen:this.generations(),mut:this.mutationsFound,worker:this.overflowStats.worker,army:this.overflowStats.army},
+		overlay=$('<div id="catchUp"><div>Catching up on <span></span>&hellip;</div><div class="progressbarborder"><div class="progressbar mine" style="width:0%">&nbsp;</div></div></div>').appendTo("body");
+		overlay.find("span").text(FormatDuration(real));
+		if(steps<1)return;
+		this.catchingUp=!0;
+		function keepHealth(c){var h=c.currentHealth();c.CalculateScore();c.currentHealth(h)}
+		ticksPerSecond=20/k;
+		keepHealth(this.mother());
+		keepHealth(this.father());
+		this.AnimateWorkers=function(){};
+		var mounds=[this.femaleMound,this.maleMound,this.princessMound,this.princeMound,this.mineMound,this.farmMound,this.carrierMound,this.factoryMound,this.armyMound],quiet=mounds.concat([this.newestBorn]),saved=[],lows=[["lowestMiner",this.mineMound,"dirtPerSecond"],["lowestFarmer",this.farmMound,"grassPerSecond"],["lowestCarrier",this.carrierMound,"carryPerSecond"],["lowestFactory",this.factoryMound,"sodPerSecond"]],savedLows=[],q;
+		for(q=0;q<quiet.length;q++)saved.push(quiet[q].notifySubscribers),quiet[q].notifySubscribers=function(){};
+		for(q=0;q<lows.length;q++)savedLows.push(this[lows[q][0]]),this[lows[q][0]]=function(a,f){return function(){var m=a.peek();return m.length>0?m[m.length-1][f]:0}}(lows[q][1],lows[q][2]);
+		function run()
+			{
+			for(var end=Math.min(steps,done+chunk);done<end;done++)
+				{
+				self.BreedCheck(!1);
+				self.father().currentHealth()>=self.father().health&&self.mother().currentHealth()>=self.mother().health&&(self.Breed(self.mother(),self.father(),"Royal"),self.boosts()<self.maxBoosts()&&self.boosts(Math.round((self.boosts()+.1)*10)/10));
+				self.prince().currentHealth()>=self.prince().health&&self.princess().currentHealth()>=self.princess().health&&self.Breed(self.princess(),self.prince(),"Heir");
+				self.CalculateProduction();
+				done%200==0&&self.CheckAchievements()
+			}
+			overlay.find(".progressbar").css("width",Math.round(done/steps*100)+"%");
+			done<steps?setTimeout(run,0):finish()
+		}
+		function finish()
+			{
+			var i,j,html;
+			for(i=0;i<quiet.length;i++)quiet[i].notifySubscribers=saved[i];
+			for(i=0;i<lows.length;i++)self[lows[i][0]]=savedLows[i];
+			for(i=0;i<quiet.length;i++)quiet[i].valueHasMutated();
+			ticksPerSecond=20;
+			delete self.AnimateWorkers;
+			keepHealth(self.mother());
+			keepHealth(self.father());
+			for(i=0;i<mounds.length;i++)for(j=0;j<mounds[i]().length;j++)mounds[i]()[j].id>startId&&keepHealth(mounds[i]()[j]);
+			self.sodPerSecondRaw()>=100&&self.isHeirsUnlocked(!0);
+			self.UpdateProduction();
+			self.CheckAchievements();
+			overlay.remove();
+			self.catchingUp=!1;
+			self.lastTickTime=Date.now();
+			self.Save();
+			if(real<6e4)return;
+			html='<div class="modal" id="awayReport"><button style="float: right" class="simplemodal-close">Close</button><h4>While you were away</h4><p>'+FormatDuration(real)+(ms>cap?' (capped at 12 hours)':'')+' of progress:</p><ul>'
+				+'<li>'+gameFormatNumber(self.achievementCounts[6].value-startId)+' eggs hatched</li>'
+				+'<li>'+gameFormatNumber(self.mutationsFound-start.mut)+' new mutations appeared</li>'
+				+(self.overflowStats.worker-start.worker>0?'<li>'+gameFormatNumber(self.overflowStats.worker-start.worker)+' leftover eggs became workers</li>':'')
+				+(self.overflowStats.army-start.army>0?'<li>'+gameFormatNumber(self.overflowStats.army-start.army)+' leftover eggs sent to the soldiers</li>':'')
+				+'<li>Sod: '+gameFormatNumber(SmartRound(start.sod))+' &rarr; '+gameFormatNumber(SmartRound(self.sodRaw()))+'</li>'
+				+'</ul>'+(self.atWar()?'<p>Wars only progress while the game is open.</p>':'')+'</div>';
+			$.modal(html,{close:!0})
+		}
+		run()
 	}
 	,n.prototype.TogglePauseBreeding=function()
 		{
@@ -824,8 +916,7 @@ var ticksPerSecond=20,game,GameController=function()
 				u.job=2;
 				u.isSelected(!1);
 				f.remove(u);
-				var h=u.dirtPerSecond>this.lowestMiner()||this.mineMound().length<this.maxMineMoundSize(),c=u.grassPerSecond>this.lowestFarmer()||this.farmMound().length<this.maxFarmMoundSize(),v=u.carryPerSecond>this.lowestCarrier()||this.carrierMound().length<this.maxCarrierMoundSize(),y=u.sodPerSecond>this.lowestFactory()||this.factoryMound().length<this.maxFactoryMoundSize(),s=Math.min(this.dirtPerSecondRaw(),this.grassPerSecondRaw(),this.carryPerSecondRaw(),this.sodPerSecondRaw());
-				h&&s==this.dirtPerSecondRaw()?this.mineMound.unshift(u):c&&s==this.grassPerSecondRaw()?this.farmMound.unshift(u):v&&s==this.carryPerSecondRaw()?this.carrierMound.unshift(u):y&&s==this.sodPerSecondRaw()?this.factoryMound.unshift(u):h&&c?(p=Math.min(this.dirtPerSecondRaw(),this.grassPerSecondRaw()),p==this.dirtPerSecondRaw()?this.mineMound.unshift(u):this.farmMound.unshift(u)):h?this.mineMound.unshift(u):c?this.farmMound.unshift(u):v?this.carrierMound.unshift(u):y&&this.factoryMound.unshift(u);
+				this.PlaceWorker(u);
 				this.Sort();
 				this.UpdateProduction()
 			}
@@ -1159,10 +1250,10 @@ var ticksPerSecond=20,game,GameController=function()
 			{
 			if(t--,!this.maleMound()[t].isLocked())
 				{
-				this.maleMound.splice(t,1);
+				this.overflowEggs.push.apply(this.overflowEggs,this.maleMound.splice(t,1));
 				continue
 			}
-			t==0&&this.maleMound.pop()
+			t==0&&this.overflowEggs.push(this.maleMound.pop())
 		}
 		for(n=this.femaleMound().length;
 		this.femaleMound().length>this.maxFemaleMoundSize();
@@ -1170,10 +1261,10 @@ var ticksPerSecond=20,game,GameController=function()
 			{
 			if(n--,!this.femaleMound()[n].isLocked())
 				{
-				this.femaleMound.splice(n,1);
+				this.overflowEggs.push.apply(this.overflowEggs,this.femaleMound.splice(n,1));
 				continue
 			}
-			n==0&&this.femaleMound.pop()
+			n==0&&this.overflowEggs.push(this.femaleMound.pop())
 		}
 		for(t=this.princeMound().length;
 		this.princeMound().length>this.maxPrinceMoundSize();
@@ -1181,10 +1272,10 @@ var ticksPerSecond=20,game,GameController=function()
 			{
 			if(t--,!this.princeMound()[t].isLocked())
 				{
-				this.princeMound.splice(t,1);
+				this.overflowEggs.push.apply(this.overflowEggs,this.princeMound.splice(t,1));
 				continue
 			}
-			t==0&&this.princeMound.pop()
+			t==0&&this.overflowEggs.push(this.princeMound.pop())
 		}
 		for(n=this.princessMound().length;
 		this.princessMound().length>this.maxPrincessMoundSize();
@@ -1192,19 +1283,20 @@ var ticksPerSecond=20,game,GameController=function()
 			{
 			if(n--,!this.princessMound()[n].isLocked())
 				{
-				this.princessMound.splice(n,1);
+				this.overflowEggs.push.apply(this.overflowEggs,this.princessMound.splice(n,1));
 				continue
 			}
-			n==0&&this.princessMound.pop()
+			n==0&&this.overflowEggs.push(this.princessMound.pop())
 		}
-		for(this.SortMound(this.maleMound,this.maleSort()),this.SortMound(this.femaleMound,this.femaleSort()),this.SortMound(this.princeMound,this.princeSort()),this.SortMound(this.princessMound,this.princessSort()),this.SortMound(this.carrierMound,"carry"),this.SortMound(this.mineMound,"mine"),this.SortMound(this.farmMound,"farm"),this.SortMound(this.factoryMound,"factory"),this.SortMound(this.armyMound,this.armySort());
+		for(this.RouteOverflow(),this.SortMound(this.maleMound,this.maleSort()),this.SortMound(this.femaleMound,this.femaleSort()),this.SortMound(this.princeMound,this.princeSort()),this.SortMound(this.princessMound,this.princessSort()),this.SortMound(this.carrierMound,"carry"),this.SortMound(this.mineMound,"mine"),this.SortMound(this.farmMound,"farm"),this.SortMound(this.factoryMound,"factory"),this.SortMound(this.armyMound,this.armySort());
 		this.carrierMound().length>this.maxCarrierMoundSize();
 		)this.carrierMound.pop();
 		while(this.mineMound().length>this.maxMineMoundSize())this.mineMound.pop();
 		while(this.farmMound().length>this.maxFarmMoundSize())this.farmMound.pop();
 		while(this.factoryMound().length>this.maxFactoryMoundSize())this.factoryMound.pop();
 		while(this.armyMound().length>this.maxArmyMoundSize())this.armyMound.pop();
-		this.UpdateArmyUpgrades()
+		this.UpdateArmyUpgrades();
+		this.overflowPlacedWorker&&(this.overflowPlacedWorker=!1,this.UpdateProduction())
 	}
 	,n.prototype.SortMound=function(n,t)
 		{
@@ -1312,7 +1404,7 @@ var ticksPerSecond=20,game,GameController=function()
 	,n.prototype.Save=function()
 		{
 		var n=new GameSave,t;
-		return n.version="1.0",n.dirtRaw=this.dirtRaw(),n.grassRaw=this.grassRaw(),n.sodRaw=this.sodRaw(),n.factoryDirtRaw=this.factoryDirtRaw(),n.factoryGrassRaw=this.factoryGrassRaw(),n.generations=this.generations(),n.mother=this.mother(),n.father=this.father(),n.princess=this.princess(),n.prince=this.prince(),n.sodDedicatedToBreeding=this.sodDedicatedToBreeding(),n.isHeirsUnlocked=this.isHeirsUnlocked(),n.femaleMound=this.femaleMound(),n.maleMound=this.maleMound(),n.princessMound=this.princessMound(),n.princeMound=this.princeMound(),n.mineMound=this.mineMound(),n.farmMound=this.farmMound(),n.carrierMound=this.carrierMound(),n.factoryMound=this.factoryMound(),n.armyMound=this.armyMound(),n.maxFemaleMoundSize=this.maxFemaleMoundSize(),n.maxMaleMoundSize=this.maxMaleMoundSize(),n.maxPrincessMoundSize=this.maxPrincessMoundSize(),n.maxPrinceMoundSize=this.maxPrinceMoundSize(),n.maxMineMoundSize=this.maxMineMoundSize(),n.bonusMinePercent=this.bonusMinePercent(),n.bonusFarmPercent=this.bonusFarmPercent(),n.bonusCarrierPercent=this.bonusCarrierPercent(),n.bonusFactoryPercent=this.bonusFactoryPercent(),n.maxFarmMoundSize=this.maxFarmMoundSize(),n.maxCarrierMoundSize=this.maxCarrierMoundSize(),n.maxFactoryMoundSize=this.maxFactoryMoundSize(),n.maxArmyMoundSize=this.maxArmyMoundSize(),n.femaleSort=this.femaleSort(),n.maleSort=this.maleSort(),n.princessSort=this.princessSort(),n.princeSort=this.princeSort(),n.armySort=this.armySort(),n.map=this.map(),n.tiles=this.map().tiles(),n.atWar=this.atWar(),n.nations=this.nations(),n.nation=this.nation(),n.achievements=this.achievements(),n.achievementCounts=this.achievementCounts,n.achievementsUnlocked=this.achievementsUnlocked(),n.battleTurnLength=this.battleTurnLength(),n.boosts=this.boosts(),n.maxBoosts=this.maxBoosts(),n.armyUpgrades=this.armyUpgrades(),t=$.base64.encode(ko.toJSON(n)),localStorage.setItem("game2",t),$(".tabcontents").notify("Game Saved","info"),this.saveCheck=60*ticksPerSecond,t
+		return n.version="1.0",n.dirtRaw=this.dirtRaw(),n.grassRaw=this.grassRaw(),n.sodRaw=this.sodRaw(),n.factoryDirtRaw=this.factoryDirtRaw(),n.factoryGrassRaw=this.factoryGrassRaw(),n.generations=this.generations(),n.mother=this.mother(),n.father=this.father(),n.princess=this.princess(),n.prince=this.prince(),n.sodDedicatedToBreeding=this.sodDedicatedToBreeding(),n.isHeirsUnlocked=this.isHeirsUnlocked(),n.femaleMound=this.femaleMound(),n.maleMound=this.maleMound(),n.princessMound=this.princessMound(),n.princeMound=this.princeMound(),n.mineMound=this.mineMound(),n.farmMound=this.farmMound(),n.carrierMound=this.carrierMound(),n.factoryMound=this.factoryMound(),n.armyMound=this.armyMound(),n.maxFemaleMoundSize=this.maxFemaleMoundSize(),n.maxMaleMoundSize=this.maxMaleMoundSize(),n.maxPrincessMoundSize=this.maxPrincessMoundSize(),n.maxPrinceMoundSize=this.maxPrinceMoundSize(),n.maxMineMoundSize=this.maxMineMoundSize(),n.bonusMinePercent=this.bonusMinePercent(),n.bonusFarmPercent=this.bonusFarmPercent(),n.bonusCarrierPercent=this.bonusCarrierPercent(),n.bonusFactoryPercent=this.bonusFactoryPercent(),n.maxFarmMoundSize=this.maxFarmMoundSize(),n.maxCarrierMoundSize=this.maxCarrierMoundSize(),n.maxFactoryMoundSize=this.maxFactoryMoundSize(),n.maxArmyMoundSize=this.maxArmyMoundSize(),n.femaleSort=this.femaleSort(),n.maleSort=this.maleSort(),n.princessSort=this.princessSort(),n.princeSort=this.princeSort(),n.armySort=this.armySort(),n.map=this.map(),n.tiles=this.map().tiles(),n.atWar=this.atWar(),n.nations=this.nations(),n.nation=this.nation(),n.achievements=this.achievements(),n.achievementCounts=this.achievementCounts,n.achievementsUnlocked=this.achievementsUnlocked(),n.battleTurnLength=this.battleTurnLength(),n.boosts=this.boosts(),n.maxBoosts=this.maxBoosts(),n.overflowAction=this.overflowAction(),n.lastTickTime=Date.now(),n.armyUpgrades=this.armyUpgrades(),t=$.base64.encode(ko.toJSON(n)),localStorage.setItem("game2",t),$(".tabcontents").notify("Game Saved","info"),this.saveCheck=60*ticksPerSecond,t
 	}
 	,n.prototype.Load=function(n)
 		{
@@ -1321,7 +1413,7 @@ var ticksPerSecond=20,game,GameController=function()
 			{
 			if(n!==null||localStorage.getItem("game2")!==null)
 				{
-				if(t=n!=null?JSON.parse($.base64.decode(n)):JSON.parse($.base64.decode(localStorage.getItem("game2"))),this.dirtRaw(t.dirtRaw),this.grassRaw(t.grassRaw),this.sodRaw(t.sodRaw),this.factoryDirtRaw(t.factoryDirtRaw),this.factoryGrassRaw(t.factoryGrassRaw),this.generations(t.generations),this.sodDedicatedToBreeding(t.sodDedicatedToBreeding),this.isHeirsUnlocked(t.isHeirsUnlocked),this.maxFemaleMoundSize(t.maxFemaleMoundSize),this.maxMaleMoundSize(t.maxMaleMoundSize),this.maxPrincessMoundSize(t.maxPrincessMoundSize),this.maxPrinceMoundSize(t.maxPrinceMoundSize),this.maxMineMoundSize(t.maxMineMoundSize),this.maxFarmMoundSize(t.maxFarmMoundSize),this.maxCarrierMoundSize(t.maxCarrierMoundSize),this.maxFactoryMoundSize(t.maxFactoryMoundSize),this.maxArmyMoundSize(t.maxArmyMoundSize),this.bonusMinePercent(t.bonusMinePercent),this.bonusCarrierPercent(t.bonusCarrierPercent),this.bonusFarmPercent(t.bonusFarmPercent),this.bonusFactoryPercent(t.bonusFactoryPercent),this.femaleSort(t.femaleSort),this.maleSort(t.maleSort),this.princeSort(t.princeSort),this.princessSort(t.princessSort),this.armySort(t.armySort),this.atWar(t.atWar),this.achievementsUnlocked(t.achievementsUnlocked),this.battleTurnLength(t.battleTurnLength!=undefined?t.battleTurnLength:ticksPerSecond/2),t.boosts!=undefined&&(this.boosts(t.boosts),this.maxBoosts(t.maxBoosts)),t.nations!=undefined)for(this.nations=ko.observableArray(),i=0;
+				if(t=n!=null?JSON.parse($.base64.decode(n)):JSON.parse($.base64.decode(localStorage.getItem("game2"))),this.dirtRaw(t.dirtRaw),this.grassRaw(t.grassRaw),this.sodRaw(t.sodRaw),this.factoryDirtRaw(t.factoryDirtRaw),this.factoryGrassRaw(t.factoryGrassRaw),this.generations(t.generations),this.sodDedicatedToBreeding(t.sodDedicatedToBreeding),this.isHeirsUnlocked(t.isHeirsUnlocked),this.maxFemaleMoundSize(t.maxFemaleMoundSize),this.maxMaleMoundSize(t.maxMaleMoundSize),this.maxPrincessMoundSize(t.maxPrincessMoundSize),this.maxPrinceMoundSize(t.maxPrinceMoundSize),this.maxMineMoundSize(t.maxMineMoundSize),this.maxFarmMoundSize(t.maxFarmMoundSize),this.maxCarrierMoundSize(t.maxCarrierMoundSize),this.maxFactoryMoundSize(t.maxFactoryMoundSize),this.maxArmyMoundSize(t.maxArmyMoundSize),this.bonusMinePercent(t.bonusMinePercent),this.bonusCarrierPercent(t.bonusCarrierPercent),this.bonusFarmPercent(t.bonusFarmPercent),this.bonusFactoryPercent(t.bonusFactoryPercent),this.femaleSort(t.femaleSort),this.maleSort(t.maleSort),this.princeSort(t.princeSort),this.princessSort(t.princessSort),this.armySort(t.armySort),this.atWar(t.atWar),this.achievementsUnlocked(t.achievementsUnlocked),this.battleTurnLength(t.battleTurnLength!=undefined?t.battleTurnLength:ticksPerSecond/2),this.overflowAction(t.overflowAction!=undefined?t.overflowAction:"worker"),this.lastTickTime=n==null&&t.lastTickTime!=undefined?t.lastTickTime:Date.now(),t.boosts!=undefined&&(this.boosts(t.boosts),this.maxBoosts(t.maxBoosts)),t.nations!=undefined)for(this.nations=ko.observableArray(),i=0;
 				i<t.nations.length;
 				i++)u=new Nation(t.nations[i].enemy,t.nations[i].custom,t.nations[i].name,t.nations[i].desc,t.nations[i].lowBaseValue,t.nations[i].highBaseValue,t.nations[i].armySizeBase,t.nations[i].requiredToUnlock,t.nations[i].treasurePoints),u.mineFound(t.nations[i].mineFound),u.farmFound(t.nations[i].farmFound),u.carryFound(t.nations[i].carryFound),u.factoryFound(t.nations[i].factoryFound),u.exploreFound(t.nations[i].exploreFound),u.fortFound(t.nations[i].fortFound!=undefined?t.nations[i].fortFound:!1),u.geneFound(t.nations[i].geneFound),u.boostFound(t.nations[i].boostFound),u.treasuresFound(t.nations[i].treasuresFound),u.mapComplete(t.nations[i].mapComplete),u.isDefeated(t.nations[i].isDefeated),u.isUnlocked(t.nations[i].isUnlocked),this.nations.push(u);
 				if(t.map!=undefined)for(this.map(new GameMap),this.map().mound=t.map.mound,this.map().enemy=t.map.enemy,this.map().mine=t.map.mine,this.map().farm=t.map.farm,this.map().carry=t.map.carry,this.map().factory=t.map.factory,this.map().explore=t.map.explore,this.map().boost=t.map.boost,this.map().gene=t.map.gene,this.map().fort=t.map.fort,this.map().treasures=t.map.treasures,this.map().tileCount(t.map.tileCount),this.map().tilesCleared(t.map.tilesCleared),this.map().canExplore(t.map.canExplore),this.map().highestDanger=t.map.highestDanger!=undefined?t.map.highestDanger:1,i=0;
@@ -2125,7 +2217,14 @@ $(document).ready(function()
 	var n=new Worker("Scripts/Worker.js");
 	n.onmessage=function()
 		{
-		game.Tick()
-	}
+		if(game.catchingUp)return;
+		var t=Date.now(),i=t-game.lastTickTime;
+		game.lastTickTime=t;
+		i>5e3?game.CatchUp(i):game.Tick()
+	};
+	document.addEventListener("visibilitychange",function()
+		{
+		document.visibilityState=="hidden"&&!game.catchingUp&&game.Save()
+	})
 }
 );
