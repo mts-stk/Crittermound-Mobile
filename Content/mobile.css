@@ -53,6 +53,8 @@
     p, li { text-align: left; }
 
     .modal { max-width: 92vw; box-sizing: border-box; }
+    #simplemodal-container { width: 92vw !important; max-width: 92vw; left: 4vw !important; }
+    .modal textarea { width: 100%; box-sizing: border-box; font-size: 12px; }
 }
 
 @media (max-width: 480px) {
