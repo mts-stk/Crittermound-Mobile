@@ -1,0 +1,61 @@
+/* Mobile-friendly layout. Pure presentation: no game logic is affected. */
+@media (max-width: 900px) {
+    body { font-size: 15px; overflow-x: hidden; margin: 0; }
+
+    #pageContent { min-width: 0; max-width: 100%; padding: 6px; box-sizing: border-box; }
+
+    /* Header: stack title and stats */
+    #pageContent > div[style*="float: right"] { float: none !important; padding: 0 0 4px 0 !important; }
+    #pageContent > div[style*="float: right"] span:first-child { margin-left: 0 !important; }
+
+    /* Tabs: wrap into a grid of tappable buttons */
+    ul.tabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 0; }
+    ul.tabs li { display: block; margin: 0; flex: 1 1 calc(50% - 4px); }
+    ul.tabs li[style*="display: none"] { display: none !important; }
+    ul.tabs li a { display: block; padding: 10px 6px; font-size: 12px; text-align: center; border-radius: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    ul.tabs li.selected a, ul.tabs li.selected a:hover { border-bottom-color: #b7b7b7; outline: 2px solid #333; outline-offset: -2px; }
+
+    div.tabcontents { min-height: 0; border-radius: 3px; }
+
+    /* Two-column layout tables become a single stacked column */
+    .tab > table, .tab > table > tbody, .tab > table > tbody > tr, .tab > table > tbody > tr > td {
+        display: block; width: 100% !important; box-sizing: border-box;
+    }
+    .tab > table { border-spacing: 0; }
+    .tab > table > tbody > tr > td { padding: 6px 4px !important; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+    /* Critter tables: tighter cells, scroll horizontally if still too wide */
+    table.critter th { font-size: 13px; padding: 4px 2px; }
+    table.critter td { font-size: 11px; padding: 4px 2px; }
+    table.critter .trait { font-size: 11px; }
+    table.critter td.traitcell { height: 34px; }
+    th.noborder[style*="text-align: right"] { white-space: normal; }
+    .tableheader { white-space: normal; }
+
+    /* Production overview */
+    table.production { width: 100% !important; min-width: 560px; }
+    table.production img { width: 100% !important; height: auto; }
+    table.production tr.header th { width: auto !important; font-size: 11px; }
+    table.production tr.stats th { font-size: 11px; }
+
+    /* Buttons: larger touch targets */
+    button { font-size: 13px; padding: 6px 8px; min-width: 0 !important; margin: 2px 0; }
+    select { font-size: 13px; padding: 4px; }
+    input[type="range"] { height: 28px; }
+
+    button.war { width: calc(50% - 12px); font-size: 18px; padding: 8px 4px; white-space: normal; }
+    button.war .info { font-size: 12px; }
+
+    div.achievement { width: calc(50% - 32px); white-space: normal; margin: 4px; padding: 8px; vertical-align: top; }
+
+    table.map td { height: 22px; font-size: 10px; }
+
+    p, li { text-align: left; }
+
+    .modal { max-width: 92vw; box-sizing: border-box; }
+}
+
+@media (max-width: 480px) {
+    ul.tabs li a { font-size: 11px; padding: 10px 4px; }
+    button.war, div.achievement { width: 100%; box-sizing: border-box; margin: 4px 0; }
+}
